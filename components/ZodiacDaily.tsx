@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { StarIcon, CalendarIcon, EditIcon } from './Icons';
-import { generateHoroscope } from '../services/geminiService';
+import { StarIcon, CalendarIcon, EditIcon, LinkIcon } from './Icons';
+import { generateHoroscope, HoroscopeResult } from '../services/geminiService';
 import { db } from '../services/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -27,6 +27,7 @@ export const ZodiacDaily: React.FC<ZodiacDailyProps> = ({ userId }) => {
   const [dob, setDob] = useState<string>('');
   const [sign, setSign] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
+  const [sources, setSources] = useState<{ uri: string; title: string }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [savingDob, setSavingDob] = useState<boolean>(false);
   const [editing, setEditing] = useState<boolean>(false);
@@ -89,8 +90,9 @@ export const ZodiacDaily: React.FC<ZodiacDailyProps> = ({ userId }) => {
 
     // Fetch message
     try {
-        const msg = await generateHoroscope(calculatedSign);
-        setMessage(msg);
+        const result: HoroscopeResult = await generateHoroscope(calculatedSign);
+        setMessage(result.text);
+        setSources(result.sources);
     } catch (e) {
         console.error("Error fetching horoscope", e);
     } finally {
@@ -217,6 +219,22 @@ export const ZodiacDaily: React.FC<ZodiacDailyProps> = ({ userId }) => {
                             {message}
                         </div>
                     </div>
+                    
+                    {sources.length > 0 && (
+                        <div className="mt-6 pt-6 border-t border-slate-100">
+                            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Sources</h4>
+                            <ul className="space-y-2">
+                                {sources.map((source, idx) => (
+                                    <li key={idx}>
+                                        <a href={source.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-brand-600 hover:underline bg-slate-50 p-2 rounded-lg hover:bg-slate-100 transition-colors">
+                                            <LinkIcon className="w-3 h-3 flex-shrink-0" />
+                                            <span className="truncate">{source.title || source.uri}</span>
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
                     
                     <div className="mt-8 pt-6 border-t border-slate-100 text-xs text-slate-400 italic">
                         Powered by AI & Internet Sources • Providing insights for entertainment and guidance.

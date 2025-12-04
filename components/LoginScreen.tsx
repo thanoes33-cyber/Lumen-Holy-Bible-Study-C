@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { LockIcon, EyeIcon, EyeOffIcon, MailIcon, CheckIcon, XIcon, DoveIcon } from './Icons';
-import { auth } from '../services/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { LockIcon, EyeIcon, EyeOffIcon, MailIcon, CheckIcon, XIcon, DoveIcon, GoogleIcon } from './Icons';
+import { auth, isFirebaseConfigValid } from '../services/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
@@ -19,11 +19,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGues
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  
+  const checkConfig = (): boolean => {
+    if (!isFirebaseConfigValid()) {
+      setError("App configuration missing. Please ensure environment variables are set.");
+      return false;
+    }
+    return true;
+  };
 
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!checkConfig()) return;
+    
     if (!auth) {
-      setError("Auth service unavailable.");
+      setError("Firebase service not initialized.");
       return;
     }
 
@@ -51,10 +61,44 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGues
       if (err.code === 'auth/email-already-in-use') msg = "Email already in use.";
       if (err.code === 'auth/weak-password') msg = "Password should be at least 6 characters.";
       if (err.code === 'auth/too-many-requests') msg = "Too many failed attempts. Try again later.";
-      if (err.code === 'auth/invalid-api-key') msg = "System Error: Invalid API Key.";
+      if (err.code === 'auth/invalid-api-key') {
+         msg = "Invalid API Key in configuration.";
+      }
       setError(msg);
     } finally {
       if (view !== 'forgot') setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    if (!checkConfig()) return;
+
+    if (!auth) {
+      setError("Firebase auth service is not initialized.");
+      return;
+    }
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+      // onLoginSuccess handled by App.tsx listener
+    } catch (err: any) {
+      console.error("Google Sign-In Error:", err);
+      if (err.code === 'auth/operation-not-allowed') {
+         setError("Google Sign-In is not enabled in the Firebase Console.");
+      } else if (err.code === 'auth/popup-closed-by-user') {
+         setError("Sign-in cancelled.");
+      } else if (err.code === 'auth/invalid-api-key' || (err.message && err.message.includes('api-key-not-valid'))) {
+         setError("Configuration Required.");
+      } else if (err.code === 'auth/configuration-not-found') {
+         setError("Firebase configuration not found.");
+      } else {
+         setError(err.message || "Failed to sign in with Google.");
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -80,8 +124,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGues
                     {view === 'login' ? 'Welcome Back' : view === 'signup' ? 'Create Account' : 'Reset Password'}
                   </h2>
                   
-                  {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center"><XIcon className="w-4 h-4 mr-2"/>{error}</div>}
-                  {success && <div className="p-3 bg-green-50 text-green-600 text-sm rounded-lg flex items-center"><CheckIcon className="w-4 h-4 mr-2"/>{success}</div>}
+                  {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center"><XIcon className="w-4 h-4 mr-2 shrink-0"/>{error}</div>}
+                  {success && <div className="p-3 bg-green-50 text-green-600 text-sm rounded-lg flex items-center"><CheckIcon className="w-4 h-4 mr-2 shrink-0"/>{success}</div>}
                   
                   <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Email</label>
@@ -137,24 +181,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onGues
                   >
                       {isLoading ? 'Processing...' : (view === 'login' ? 'Sign In' : view === 'signup' ? 'Create Account' : 'Send Reset Link')}
                   </button>
-                  
-                  <div className="pt-4 border-t border-slate-100 flex flex-col items-center space-y-4">
-                      <div className="text-center">
-                          {view === 'login' ? (
-                            <>
-                              <p className="text-slate-500 text-xs">Don't have an account?</p>
-                              <button type="button" onClick={() => setView('signup')} className="text-brand-600 font-bold hover:text-brand-800 transition-colors text-sm">
-                                  Create Profile
-                              </button>
-                            </>
-                          ) : (
-                            <button type="button" onClick={() => setView('login')} className="text-brand-600 font-bold hover:text-brand-800 transition-colors text-sm">
-                                Back to Sign In
-                            </button>
-                          )}
-                      </div>
-                  </div>
               </form>
+              
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-200"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-slate-400 font-bold tracking-wider">Or continue with</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                className="w-full py-3 rounded-xl border border-slate-200 flex items-center justify-center space-x-2 hover:bg-slate-50 transition-colors bg-white text-slate-700 font-semibold"
+              >
+                <GoogleIcon className="w-5 h-5" />
+                <span>Sign in with Google</span>
+              </button>
+              
+              <div className="pt-4 border-t border-slate-100 flex flex-col items-center space-y-4 mt-6">
+                  <div className="text-center">
+                      {view === 'login' ? (
+                        <>
+                          <p className="text-slate-500 text-xs">Don't have an account?</p>
+                          <button type="button" onClick={() => setView('signup')} className="text-brand-600 font-bold hover:text-brand-800 transition-colors text-sm">
+                              Create Profile
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={() => setView('login')} className="text-brand-600 font-bold hover:text-brand-800 transition-colors text-sm">
+                            Back to Sign In
+                        </button>
+                      )}
+                  </div>
+              </div>
           </div>
        </div>
     </div>

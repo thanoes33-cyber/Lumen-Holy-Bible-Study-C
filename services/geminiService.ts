@@ -22,10 +22,14 @@ Guidelines:
 let chatSession: Chat | null = null;
 
 // Initialize the Gemini client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// STRICT COMPLIANCE: Use process.env.API_KEY directly.
+const getAiClient = () => {
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+};
 
 export const getChatSession = (history?: Content[]): Chat => {
   if (!chatSession) {
+    const ai = getAiClient();
     chatSession = ai.chats.create({
       model: 'gemini-2.5-flash',
       history: history,
@@ -44,6 +48,7 @@ export const resetChatSession = (history?: Content[]) => {
 
 export const generateDailyVerse = async (): Promise<DailyVerse> => {
   try {
+    const ai = getAiClient();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: "Give me a short, encouraging Bible verse for today. Return ONLY the JSON object with keys 'text' and 'reference'. Do not use Markdown code blocks.",
@@ -64,8 +69,14 @@ export const generateDailyVerse = async (): Promise<DailyVerse> => {
   }
 };
 
-export const generateHoroscope = async (sign: string): Promise<string> => {
+export interface HoroscopeResult {
+  text: string;
+  sources: { uri: string; title: string }[];
+}
+
+export const generateHoroscope = async (sign: string): Promise<HoroscopeResult> => {
   try {
+    const ai = getAiClient();
     const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash', // Using flash as tools are available
@@ -76,10 +87,21 @@ export const generateHoroscope = async (sign: string): Promise<string> => {
     });
 
     const text = response.text;
+    
+    // Extract grounding sources as per guidelines
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const sources = chunks
+      .map((c: any) => c.web)
+      .filter((w: any) => w)
+      .map((w: any) => ({ uri: w.uri, title: w.title }));
+
     if (!text) throw new Error("No text returned from horoscope generation");
-    return text;
+    return { text, sources };
   } catch (e) {
     console.error("Failed to generate horoscope", e);
-    return "The stars are quiet today. Focus on your inner peace and trust in your journey.";
+    return {
+      text: "The stars are quiet today. Focus on your inner peace and trust in your journey.",
+      sources: []
+    };
   }
 };
